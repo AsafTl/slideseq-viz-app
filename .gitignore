@@ -1,0 +1,33 @@
+# Slide-seq data files — distributed separately, not in git.
+# The empty folder skeleton under working/ is kept (via .gitkeep) so that
+# users can simply drop the data files into the right place.
+working/**/*.mtx
+working/**/*.tsv
+working/**/*.txt
+working/**/*.gz
+working/**/*.csv
+working/**/*.rds
+working/**/*.json
+working/**/*.pdf
+
+# Runtime cache of rendered PNGs
+figs/
+
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp

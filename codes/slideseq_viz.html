@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slideseq Viz</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f1ea;
+  --bg2: #ede9e1;
+  --surface: #faf8f4;
+  --border: #ddd8ce;
+  --text: #2a2520;
+  --text2: #7a746c;
+  --accent: #c75a2c;
+  --accent-hover: #b04d24;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOP BAR */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+.app-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.input-wrap { flex: 1; position: relative; }
+.gene-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--text);
+  padding: 9px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.gene-input:focus { border-color: var(--accent); }
+.gene-input::placeholder { color: var(--text2); font-style: italic; }
+
+.run-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 22px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.run-btn:hover { background: var(--accent-hover); }
+.run-btn:active { transform: scale(0.97); }
+.run-btn:disabled { background: #c4bfb7; cursor: not-allowed; transform: none; }
+
+.radius-wrap {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 10px 0 4px;
+  flex-shrink: 0;
+}
+.radius-input {
+  width: 64px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--text);
+  padding: 9px 6px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.radius-input::-webkit-outer-spin-button,
+.radius-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.radius-unit {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.gene-chips { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.gene-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px 4px 8px;
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text);
+}
+.chip-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+
+/* GRID */
+.grid-area {
+  flex: 1;
+  padding: 20px 28px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+/* PUCK CARD */
+.puck-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
+  min-height: 0;
+}
+.puck-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.puck-card.idle { cursor: default; opacity: 0.5; }
+.puck-card.idle:hover { box-shadow: var(--shadow); transform: none; }
+
+.puck-image-area {
+  flex: 1;
+  background: #1a1814;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+.puck-image-area img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+}
+.puck-error {
+  color: #f5b8a3;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 12px;
+  text-align: center;
+}
+
+.puck-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.puck-id { font-size: 13px; font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+.puck-hint { margin-left: auto; font-size: 11px; color: var(--text2); letter-spacing: 0.02em; }
+
+/* spinner */
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: rgba(255,255,255,0.7);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* MODAL */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(20,18,14,0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+  overflow: hidden;
+  width: 96vw;
+  height: 96vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.modal-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.modal-title { font-size: 15px; font-weight: 600; font-family: 'DM Mono', monospace; }
+.modal-close {
+  margin-left: auto;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text2);
+  transition: background 0.1s;
+}
+.modal-close:hover { background: var(--bg2); color: var(--text); }
+
+.modal-image {
+  flex: 1 1 0;
+  background: #1a1814;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px;
+}
+.modal-image img { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; }
+
+.modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+
+.dl-btn {
+  margin-left: auto;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 16px;
+  cursor: pointer;
+  color: var(--text);
+  display: flex; align-items: center; gap: 6px;
+  text-decoration: none;
+  transition: background 0.1s, border-color 0.1s;
+}
+.dl-btn:hover { background: var(--bg2); border-color: #b8b3aa; }
+.dl-btn[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="root" style="width:100vw; height:100vh; display:flex; flex-direction:column;"></div>
+<script type="text/babel">
+
+// Match the matplotlib colour names used by the Python renderer.
+// red, green, cyan, purple (matplotlib named colors).
+const GENE_COLORS = ['#FF0000', '#008000', '#00FFFF', '#800080'];
+const DEFAULT_RADIUS_UM = 50;
+const PUCK_IDS = ['Puck_240208_24', 'Puck_240208_25', 'Puck_240208_26',
+                  'Puck_240208_27', 'Puck_240208_29', 'Puck_240208_30'];
+
+function shortPuck(id) {
+  // "Puck_240208_24" -> "Puck 24"
+  const parts = id.split('_');
+  return 'Puck ' + parts[parts.length - 1];
+}
+
+function App() {
+  const [inputVal, setInputVal] = React.useState('');
+  const [radiusVal, setRadiusVal] = React.useState(String(DEFAULT_RADIUS_UM));
+  // tiles state: { [puckId]: { status: 'idle'|'loading'|'done'|'error', url?, error? } }
+  const [tiles, setTiles] = React.useState(() =>
+    Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'idle' }])));
+  const [genes, setGenes] = React.useState([]);
+  const [activeRadius, setActiveRadius] = React.useState(DEFAULT_RADIUS_UM);
+  const [expanded, setExpanded] = React.useState(null);
+  // bumps every time genes change so stale fetches can be ignored
+  const reqIdRef = React.useRef(0);
+
+  function handleRun() {
+    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+    if (!parsed.length) return;
+    const r = parseFloat(radiusVal);
+    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+    const myReq = ++reqIdRef.current;
+    setGenes(parsed);
+    setActiveRadius(radius);
+    setExpanded(null);
+    setTiles(Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'loading' }])));
+    const qs = new URLSearchParams({ genes: parsed.join(','), radius: String(radius) });
+    PUCK_IDS.forEach(pid => {
+      const url = `/api/render?${qs.toString()}&puck=${encodeURIComponent(pid)}`;
+      fetch(url)
+        .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+        .then(({ ok, body }) => {
+          if (myReq !== reqIdRef.current) return;
+          if (!ok) {
+            setTiles(t => ({ ...t, [pid]: { status: 'error', error: body.error || 'render failed' } }));
+          } else {
+            setTiles(t => ({ ...t, [pid]: { status: 'done', url: body.image_url } }));
+          }
+        })
+        .catch(err => {
+          if (myReq !== reqIdRef.current) return;
+          setTiles(t => ({ ...t, [pid]: { status: 'error', error: String(err) } }));
+        });
+    });
+  }
+
+  function handleKey(e) { if (e.key === 'Enter') handleRun(); }
+
+  const hasGenes = genes.length > 0;
+  const anyLoading = Object.values(tiles).some(t => t.status === 'loading');
+  const expandedTile = expanded ? tiles[expanded] : null;
+  const expandedDownloadUrl = expandedTile && expandedTile.status === 'done'
+    ? expandedTile.url.replace('/api/image/', '/api/download/')
+    : null;
+
+  return (
+    <>
+      <div className="topbar">
+        <span className="app-title">Slideseq</span>
+
+        <div className="input-wrap">
+          <input
+            className="gene-input"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Enter up to 4 genes, comma-separated  (e.g. fli1a, enpp2, cd8a, mitfa)"
+          />
+        </div>
+
+        <div className="radius-wrap" title="Neighborhood circle radius">
+          <input
+            className="radius-input"
+            type="number"
+            min="1"
+            max="500"
+            step="1"
+            value={radiusVal}
+            onChange={e => setRadiusVal(e.target.value)}
+            onKeyDown={handleKey}
+          />
+          <span className="radius-unit">µm</span>
+        </div>
+
+        <button className="run-btn" onClick={handleRun} disabled={anyLoading || !inputVal.trim()}>
+          {anyLoading ? 'Rendering…' : 'Visualize'}
+        </button>
+
+        {hasGenes && (
+          <div className="gene-chips">
+            {genes.map((g, i) => (
+              <div key={i} className="gene-chip">
+                <span className="chip-dot" style={{ background: GENE_COLORS[i] }}></span>
+                {g}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid-area">
+        {PUCK_IDS.map(pid => {
+          const t = tiles[pid];
+          const clickable = t.status === 'done';
+          return (
+            <div key={pid}
+                 className={'puck-card' + (t.status === 'idle' ? ' idle' : '')}
+                 onClick={() => clickable && setExpanded(pid)}
+                 style={clickable ? {} : { cursor: t.status === 'loading' ? 'wait' : 'default' }}>
+              <div className="puck-image-area">
+                {t.status === 'idle' && (
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>—</span>
+                )}
+                {t.status === 'loading' && <div className="spinner"></div>}
+                {t.status === 'done' && <img src={t.url} alt={pid} />}
+                {t.status === 'error' && <div className="puck-error">{t.error}</div>}
+              </div>
+              <div className="puck-footer">
+                <span className="puck-id">{shortPuck(pid)}</span>
+                {t.status === 'done' && <span className="puck-hint">click to expand</span>}
+                {t.status === 'loading' && <span className="puck-hint">rendering…</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {expanded !== null && expandedTile && (
+        <div className="modal-backdrop" onClick={() => setExpanded(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{shortPuck(expanded)}</span>
+              <div style={{ display: 'flex', gap: 10, marginLeft: 8 }}>
+                {genes.map((g, i) => (
+                  <div key={i} className="gene-chip">
+                    <span className="chip-dot" style={{ background: GENE_COLORS[i] }}></span>
+                    {g}
+                  </div>
+                ))}
+              </div>
+              <button className="modal-close" onClick={() => setExpanded(null)}>✕</button>
+            </div>
+
+            <div className="modal-image">
+              {expandedTile.status === 'done'
+                ? <img src={expandedTile.url} alt={expanded} />
+                : <div className="spinner"></div>}
+            </div>
+
+            <div className="modal-footer">
+              <span style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'DM Mono' }}>
+                {genes.length} gene{genes.length > 1 ? 's' : ''} · {activeRadius} µm neighborhood
+              </span>
+              <a className="dl-btn"
+                 href={expandedDownloadUrl || '#'}
+                 aria-disabled={!expandedDownloadUrl}
+                 download>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v8M4 7l3 3 3-3M2 12h10" stroke="currentColor"
+                        strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Download PNG
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
