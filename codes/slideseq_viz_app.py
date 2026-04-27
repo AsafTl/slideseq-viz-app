@@ -3,7 +3,7 @@ Local Flask backend for the Slideseq gene-neighborhood viewer (optimized).
 
 Drop-in replacement for `slideseq_viz_app.py`. Same HTTP API, same HTML, same
 on-disk PNG cache layout in `figs/`. The performance gains come from the new
-renderer (`2026-04-25_multigene_neighborhood_plot.py`) plus a few server-side
+renderer (`multigene_neighborhood_plot.py`) plus a few server-side
 changes:
 
   - Per-puck data is loaded once into process memory (renderer-side cache),
@@ -17,7 +17,7 @@ changes:
 
 Run:
     pip install flask
-    python codes/2026-04-25_slideseq_viz_app.py
+    python codes/slideseq_viz_app.py
     # then open http://localhost:5000
 """
 
@@ -36,7 +36,7 @@ APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 FIGS_DIR = PROJECT_ROOT / "figs"
 HTML_PATH = APP_DIR / "slideseq_viz.html"
-RENDERER_PATH = APP_DIR / "2026-04-25_multigene_neighborhood_plot.py"
+RENDERER_PATH = APP_DIR / "multigene_neighborhood_plot.py"
 
 # Filename starts with a date, so import via importlib rather than `import ...`.
 _spec = importlib.util.spec_from_file_location("multigene_plot_v2", RENDERER_PATH)
