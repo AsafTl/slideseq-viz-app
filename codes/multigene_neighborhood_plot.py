@@ -69,14 +69,17 @@ def puck_dir(puck_id: str) -> Path:
 # --------- Per-puck in-memory data cache ---------
 
 class _PuckData:
-    __slots__ = ("matrix_csc", "gene_lower_to_col", "x", "y")
+    __slots__ = ("matrix_csc", "gene_lower_to_col", "x", "y", "barcodes")
 
-    def __init__(self, matrix_csc, gene_lower_to_col, x, y):
+    def __init__(self, matrix_csc, gene_lower_to_col, x, y, barcodes):
         # CSC matrix, rows = beads (already aligned to coords), cols = genes.
         self.matrix_csc = matrix_csc
         self.gene_lower_to_col = gene_lower_to_col
         self.x = x
         self.y = y
+        # Row-aligned barcode list. Lets downstream modules join external
+        # per-bead annotations (e.g. RCTD calls) onto the matrix rows.
+        self.barcodes = barcodes
 
 
 _DATA_CACHE: dict[str, _PuckData] = {}
@@ -139,6 +142,7 @@ def _load_puck_data(puck_id: str) -> _PuckData:
             gene_lower_to_col=gene_lower_to_col,
             x=coords_filt["xcoord"].to_numpy(),
             y=coords_filt["ycoord"].to_numpy(),
+            barcodes=common,
         )
         _DATA_CACHE[puck_id] = data
         return data

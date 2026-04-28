@@ -281,6 +281,126 @@ body {
 }
 .dl-btn:hover { background: var(--bg2); border-color: #b8b3aa; }
 .dl-btn[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+
+/* TAB BAR */
+.tabbar {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  flex-shrink: 0;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 12px 20px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* SUB-TOGGLE PILL */
+.subtoggle {
+  display: flex;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px;
+  flex-shrink: 0;
+}
+.subtoggle-btn {
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.subtoggle-btn.active { background: var(--surface); color: var(--text); }
+
+/* CELL-TYPE SELECT */
+.celltype-select {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 180px;
+}
+.celltype-select:focus { border-color: var(--accent); }
+
+/* PUCK CHECKBOX ROW (dotplot sub-mode) */
+.puck-checkbox-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 28px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+}
+.puck-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text);
+}
+.puck-checkbox input { cursor: pointer; }
+
+/* CUMULATIVE PANEL */
+.cumulative-panel {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 28px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cumulative-panel.clickable:hover { background: var(--bg2); }
+.cumulative-panel.idle { cursor: default; }
+.cumulative-panel img {
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+}
+.cumulative-empty {
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-style: italic;
+}
+.cumulative-error {
+  color: #b04d24;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+}
 </style>
 </head>
 <body>
@@ -300,7 +420,7 @@ function shortPuck(id) {
   return 'Puck ' + parts[parts.length - 1];
 }
 
-function App() {
+function NeighborhoodView() {
   const [inputVal, setInputVal] = React.useState('');
   const [radiusVal, setRadiusVal] = React.useState(String(DEFAULT_RADIUS_UM));
   // tiles state: { [puckId]: { status: 'idle'|'loading'|'done'|'error', url?, error? } }
@@ -463,6 +583,315 @@ function App() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+function CellTypeView() {
+  const [inputVal, setInputVal] = React.useState('');
+  const [genes, setGenes] = React.useState([]);
+  const [activeGene, setActiveGene] = React.useState('');
+  const [activeCT, setActiveCT] = React.useState('');
+  const [celltypeOptions, setCelltypeOptions] = React.useState([]);
+  const [chosenCT, setChosenCT] = React.useState('');
+  const [subMode, setSubMode] = React.useState('dotplot');
+  const [pucksOn, setPucksOn] = React.useState(() =>
+    Object.fromEntries(PUCK_IDS.map(p => [p, true])));
+  const [tiles, setTiles] = React.useState(() =>
+    Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'idle' }])));
+  const [cumTile, setCumTile] = React.useState({ status: 'idle' });
+  const [expanded, setExpanded] = React.useState(null);
+  const reqIdRef = React.useRef(0);
+  const cumReqRef = React.useRef(0);
+
+  React.useEffect(() => {
+    fetch('/api/celltypes')
+      .then(r => r.json())
+      .then(b => {
+        if (Array.isArray(b.celltypes)) {
+          setCelltypeOptions(b.celltypes);
+          if (b.celltypes.length > 0) setChosenCT(b.celltypes[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function fetchTiles(parsedGenes, parsedCT, mode) {
+    const myReq = ++reqIdRef.current;
+    setTiles(Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'loading' }])));
+    PUCK_IDS.forEach(pid => {
+      let url;
+      if (mode === 'dotplot') {
+        const qs = new URLSearchParams({ puck: pid, genes: parsedGenes.join(',') });
+        url = `/api/render-celltype-dotplot?${qs.toString()}`;
+      } else {
+        const qs = new URLSearchParams({
+          puck: pid,
+          gene: parsedGenes[0] || '',
+          celltype: parsedCT,
+        });
+        url = `/api/render-celltype-spatial?${qs.toString()}`;
+      }
+      fetch(url)
+        .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+        .then(({ ok, body }) => {
+          if (myReq !== reqIdRef.current) return;
+          if (!ok) {
+            setTiles(t => ({ ...t, [pid]: { status: 'error', error: body.error || 'render failed' } }));
+          } else {
+            setTiles(t => ({ ...t, [pid]: { status: 'done', url: body.image_url } }));
+          }
+        })
+        .catch(err => {
+          if (myReq !== reqIdRef.current) return;
+          setTiles(t => ({ ...t, [pid]: { status: 'error', error: String(err) } }));
+        });
+    });
+  }
+
+  function fetchCumulative(parsedGenes, checkedPucks) {
+    if (!parsedGenes.length || !checkedPucks.length) {
+      setCumTile({ status: 'idle' });
+      return;
+    }
+    const myReq = ++cumReqRef.current;
+    setCumTile({ status: 'loading' });
+    const qs = new URLSearchParams({
+      genes: parsedGenes.join(','),
+      pucks: checkedPucks.join(','),
+    });
+    fetch(`/api/render-celltype-dotplot-cumulative?${qs.toString()}`)
+      .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+      .then(({ ok, body }) => {
+        if (myReq !== cumReqRef.current) return;
+        setCumTile(ok
+          ? { status: 'done', url: body.image_url }
+          : { status: 'error', error: body.error || 'render failed' });
+      })
+      .catch(err => {
+        if (myReq !== cumReqRef.current) return;
+        setCumTile({ status: 'error', error: String(err) });
+      });
+  }
+
+  function handleRun() {
+    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+    if (!parsed.length) return;
+    if (subMode === 'spatial' && !chosenCT) return;
+    setGenes(parsed);
+    setActiveGene(parsed[0] || '');
+    setActiveCT(chosenCT);
+    setExpanded(null);
+    fetchTiles(parsed, chosenCT, subMode);
+    if (subMode === 'dotplot') {
+      const checked = PUCK_IDS.filter(p => pucksOn[p]);
+      fetchCumulative(parsed, checked);
+    } else {
+      setCumTile({ status: 'idle' });
+    }
+  }
+
+  function handleKey(e) { if (e.key === 'Enter') handleRun(); }
+
+  function changeSubMode(newMode) {
+    if (newMode === subMode) return;
+    setSubMode(newMode);
+    setExpanded(null);
+    if (genes.length) {
+      fetchTiles(genes, chosenCT, newMode);
+      if (newMode === 'dotplot') {
+        const checked = PUCK_IDS.filter(p => pucksOn[p]);
+        fetchCumulative(genes, checked);
+      } else {
+        setCumTile({ status: 'idle' });
+      }
+    }
+  }
+
+  function togglePuck(pid) {
+    setPucksOn(prev => {
+      const next = { ...prev, [pid]: !prev[pid] };
+      if (genes.length && subMode === 'dotplot') {
+        const checked = PUCK_IDS.filter(p => next[p]);
+        fetchCumulative(genes, checked);
+      }
+      return next;
+    });
+  }
+
+  const anyLoading = Object.values(tiles).some(t => t.status === 'loading')
+    || cumTile.status === 'loading';
+  const expandedTile = expanded === 'cumulative'
+    ? cumTile
+    : (expanded ? tiles[expanded] : null);
+  const expandedDownloadUrl = expandedTile && expandedTile.status === 'done'
+    ? expandedTile.url.replace('/api/image/', '/api/download/')
+    : null;
+  const expandedTitle = expanded === 'cumulative'
+    ? `Cumulative (${PUCK_IDS.filter(p => pucksOn[p]).map(shortPuck).join(', ')})`
+    : (expanded ? shortPuck(expanded) : '');
+
+  return (
+    <>
+      <div className="topbar">
+        <span className="app-title">Cell-type</span>
+
+        <div className="input-wrap">
+          <input
+            className="gene-input"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Enter up to 4 genes, comma-separated  (e.g. mitfa, cd8a, marco)"
+          />
+        </div>
+
+        <select
+          className="celltype-select"
+          value={chosenCT}
+          onChange={e => setChosenCT(e.target.value)}
+          title="Cell type to highlight in the spatial map"
+        >
+          {celltypeOptions.length === 0 && <option value="">loading…</option>}
+          {celltypeOptions.map(ct => (
+            <option key={ct} value={ct}>{ct}</option>
+          ))}
+        </select>
+
+        <div className="subtoggle" title="Choose Dotplot or Spatial map">
+          <button
+            className={'subtoggle-btn' + (subMode === 'dotplot' ? ' active' : '')}
+            onClick={() => changeSubMode('dotplot')}
+          >Dotplot</button>
+          <button
+            className={'subtoggle-btn' + (subMode === 'spatial' ? ' active' : '')}
+            onClick={() => changeSubMode('spatial')}
+          >Spatial</button>
+        </div>
+
+        <button
+          className="run-btn"
+          onClick={handleRun}
+          disabled={anyLoading || !inputVal.trim()
+            || (subMode === 'spatial' && !chosenCT)}
+        >
+          {anyLoading ? 'Rendering…' : 'Visualize'}
+        </button>
+      </div>
+
+      {subMode === 'dotplot' && (
+        <div className="puck-checkbox-row">
+          <span>Cumulative includes:</span>
+          {PUCK_IDS.map(pid => (
+            <label key={pid} className="puck-checkbox">
+              <input
+                type="checkbox"
+                checked={!!pucksOn[pid]}
+                onChange={() => togglePuck(pid)}
+              />
+              {shortPuck(pid)}
+            </label>
+          ))}
+        </div>
+      )}
+
+      {subMode === 'dotplot' && (
+        <div
+          className={'cumulative-panel'
+            + (cumTile.status === 'done' ? ' clickable' : ' idle')}
+          onClick={() => cumTile.status === 'done' && setExpanded('cumulative')}
+        >
+          {cumTile.status === 'idle' && (
+            <span className="cumulative-empty">
+              Cumulative dotplot will appear here after you click Visualize
+            </span>
+          )}
+          {cumTile.status === 'loading' && <div className="spinner"></div>}
+          {cumTile.status === 'done' && <img src={cumTile.url} alt="cumulative dotplot" />}
+          {cumTile.status === 'error' && (
+            <div className="cumulative-error">{cumTile.error}</div>
+          )}
+        </div>
+      )}
+
+      <div className="grid-area">
+        {PUCK_IDS.map(pid => {
+          const t = tiles[pid];
+          const clickable = t.status === 'done';
+          return (
+            <div key={pid}
+                 className={'puck-card' + (t.status === 'idle' ? ' idle' : '')}
+                 onClick={() => clickable && setExpanded(pid)}
+                 style={clickable ? {} : { cursor: t.status === 'loading' ? 'wait' : 'default' }}>
+              <div className="puck-image-area">
+                {t.status === 'idle' && (
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>—</span>
+                )}
+                {t.status === 'loading' && <div className="spinner"></div>}
+                {t.status === 'done' && <img src={t.url} alt={pid} />}
+                {t.status === 'error' && <div className="puck-error">{t.error}</div>}
+              </div>
+              <div className="puck-footer">
+                <span className="puck-id">{shortPuck(pid)}</span>
+                {t.status === 'done' && <span className="puck-hint">click to expand</span>}
+                {t.status === 'loading' && <span className="puck-hint">rendering…</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {expanded !== null && expandedTile && (
+        <div className="modal-backdrop" onClick={() => setExpanded(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{expandedTitle}</span>
+              <button className="modal-close" onClick={() => setExpanded(null)}>✕</button>
+            </div>
+            <div className="modal-image">
+              {expandedTile.status === 'done'
+                ? <img src={expandedTile.url} alt={String(expanded)} />
+                : <div className="spinner"></div>}
+            </div>
+            <div className="modal-footer">
+              <span style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'DM Mono' }}>
+                {subMode === 'dotplot'
+                  ? `${genes.length} gene${genes.length > 1 ? 's' : ''} × cell types`
+                  : `${activeGene} highlighted in ${activeCT}`}
+              </span>
+              <a className="dl-btn"
+                 href={expandedDownloadUrl || '#'}
+                 aria-disabled={!expandedDownloadUrl}
+                 download>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v8M4 7l3 3 3-3M2 12h10" stroke="currentColor"
+                        strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Download PNG
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function App() {
+  const [tab, setTab] = React.useState('neighborhood');
+  return (
+    <>
+      <div className="tabbar">
+        <button
+          className={'tab-btn' + (tab === 'neighborhood' ? ' active' : '')}
+          onClick={() => setTab('neighborhood')}
+        >Neighborhood</button>
+        <button
+          className={'tab-btn' + (tab === 'celltype' ? ' active' : '')}
+          onClick={() => setTab('celltype')}
+        >Cell-type expression</button>
+      </div>
+      {tab === 'neighborhood' ? <NeighborhoodView /> : <CellTypeView />}
     </>
   );
 }

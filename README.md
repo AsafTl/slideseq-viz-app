@@ -1,10 +1,18 @@
 # Slideseq Viz App
 
 A small local web app for exploring **Slide-seq** spatial transcriptomics data
-from 6 zebrafish melanoma pucks. You type up to 4 gene names, pick a puck,
-and the app draws a map of where those genes are expressed on the tissue —
-each gene gets its own color, and a circle of adjustable radius is drawn
-around every expressing bead so you can see where genes co-occur in space.
+from 6 zebrafish melanoma pucks. The app has two tabs:
+
+- **Neighborhood** — type up to 4 gene names and the app draws, for each puck,
+  a map of where those genes are expressed. Each gene gets its own color, and
+  a circle of adjustable radius is drawn around every expressing bead so you
+  can see where genes co-occur in space.
+- **Cell-type expression** — uses the RCTD per-bead cell-type calls to show
+  either (a) a **dotplot** of how strongly your chosen genes are expressed in
+  each cell type — one per puck, plus a cumulative one across a chosen subset
+  of pucks — or (b) a **spatial highlight map** that colors the puck by cell
+  type and highlights the beads of one chosen cell type that express one
+  chosen gene.
 
 The app runs **entirely on your own computer**. Nothing is uploaded anywhere.
 The browser part is just the user interface; the actual rendering is done
@@ -145,7 +153,7 @@ hundred MB and may take a few minutes the first time.
 The repository on GitHub contains **only the code**, not the actual
 Slide-seq data.
 
-You need 4 files per puck, for each of the 6 pucks:
+You need 5 files per puck, for each of the 6 pucks:
 `Puck_240208_24`, `Puck_240208_25`, `Puck_240208_26`, `Puck_240208_27`,
 `Puck_240208_29`, `Puck_240208_30`.
 
@@ -157,25 +165,27 @@ slideseq-viz-app/
 ├── codes/
 │   ├── slideseq_viz_app.py
 │   ├── slideseq_viz.html
-│   └── multigene_neighborhood_plot.py
+│   ├── multigene_neighborhood_plot.py
+│   └── celltype_expression_plot.py
 ├── working/
 │   ├── 2024-04-22_Puck_240208_24/
 │   │   ├── Puck_240208_24.matched.digital_expression_matrix.mtx
 │   │   ├── Puck_240208_24.matched.digital_expression_barcodes.tsv
 │   │   ├── Puck_240208_24.matched.digital_expression_features.tsv
+│   │   ├── 2024-04-22_Puck_240208_24_results.csv
 │   │   └── barcode_matching/
 │   │       └── Puck_240208_24_barcode_xy.txt.gz
 │   ├── 2024-04-22_Puck_240208_25/
-│   │   └── ... (same 4 files, with "25" instead of "24")
+│   │   └── ... (same 5 files, with "25" instead of "24")
 │   ├── 2024-04-22_Puck_240208_26/
-│   │   └── ... (same 4 files, with "26" instead of "24")
+│   │   └── ... (same 5 files, with "26" instead of "24")
 │   ├── 2024-04-22_Puck_240208_27/
-│   │   └── ... (same 4 files, with "27" instead of "24")   
-│   ├── 2024-04-22_Puck_240208_29/  
-│   │   └── ... (same 4 files, with "29" instead of "24")
+│   │   └── ... (same 5 files, with "27" instead of "24")
+│   ├── 2024-04-22_Puck_240208_29/
+│   │   └── ... (same 5 files, with "29" instead of "24")
 │   └── 2024-04-22_Puck_240208_30/
-│       └── ... (same 4 files, with "30" instead of "24")   
-│   
+│       └── ... (same 5 files, with "30" instead of "24")
+│
 ├── requirements.txt
 └── README.md
 ```
@@ -186,11 +196,15 @@ Notes:
   matching folders. (You'll see small `.gitkeep` placeholder files inside
   each empty folder; ignore them — they only exist so git keeps the
   folders around.)
-- Each puck folder takes 3 files at the top level (`...mtx`,
-  `...barcodes.tsv`, `...features.tsv`) and 1 file inside the
-  `barcode_matching/` sub-folder (`..._barcode_xy.txt.gz`).
+- Each puck folder takes 4 files at the top level (`...mtx`,
+  `...barcodes.tsv`, `...features.tsv`, `..._results.csv`) and 1 file
+  inside the `barcode_matching/` sub-folder (`..._barcode_xy.txt.gz`).
+- The `..._results.csv` is the per-bead RCTD output (cell-type assignment
+  per bead). It's only used by the **Cell-type expression** tab; the
+  Neighborhood tab works without it. If you don't have it, that tab will
+  load empty — drop the file in and restart the app.
 - It's fine if the puck folders contain extra files — the app only reads
-  the 4 listed above and ignores everything else.
+  the 5 listed above and ignores everything else.
 
 
 ---
@@ -217,13 +231,36 @@ To stop the app, go back to the terminal and press `Ctrl + C`.
 
 ### How to use it
 
+The app has two tabs at the top: **Neighborhood** and **Cell-type expression**.
+Both render all 6 pucks at once in a 2×3 grid; click any tile to expand it
+and download the PNG.
+
+#### Neighborhood
+
 1. Type 1 to 4 gene symbols in the box, separated by commas
    (e.g. `cd8a, mitfa, fli1a`). The first gene is shown in red, the
    second in green, the third in cyan, the fourth in purple.
-2. Pick a puck from the dropdown.
-3. Optionally change the proximity radius (default 50 µm).
-4. Click visualize. 
-5. You can download the PNG from the button under the image.
+2. Optionally change the proximity radius (default 50 µm).
+3. Click **Visualize**. Each tile shows where those genes are expressed
+   on its puck, with a circle around every expressing bead.
+
+#### Cell-type expression
+
+1. Type 1 to 4 gene symbols.
+2. Pick a cell type from the dropdown (only used by the Spatial sub-mode).
+3. Choose a sub-mode using the toggle: **Dotplot** or **Spatial**.
+4. (Dotplot only) The checkboxes above the cumulative panel control which
+   pucks are pooled into the cumulative dotplot. The 6 per-puck dotplots
+   in the grid below are unaffected.
+5. Click **Visualize**.
+   - In **Dotplot** mode, a full-width "cumulative" dotplot appears above
+     the per-puck grid. Cell types are on the Y axis, your genes on the X.
+     Dot size = % of beads of that cell type with UMI > 0; dot color =
+     mean UMI among the expressing beads (so a true marker shows up as a
+     **large** *and* **bright** dot).
+   - In **Spatial** mode, each tile shows the puck colored by RCTD cell
+     type, with the beads of your chosen cell type that also express the
+     first gene in your list highlighted on top.
 
 ---
 
