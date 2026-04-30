@@ -390,6 +390,32 @@ body {
   width: auto;
   height: auto;
 }
+
+/* SIDE-BY-SIDE DOTPLOT ROW (cumulative + untreated) */
+.dotplot-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.dotplot-row .cumulative-panel {
+  flex: 1 1 0;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  padding: 10px 14px;
+  position: relative;
+}
+.dotplot-row .cumulative-panel:last-child { border-right: none; }
+.dotplot-panel-label {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+  pointer-events: none;
+}
 .cumulative-empty {
   color: var(--text2);
   font-family: 'DM Mono', monospace;
@@ -413,6 +439,7 @@ const GENE_COLORS = ['#FF0000', '#008000', '#00FFFF', '#800080'];
 const DEFAULT_RADIUS_UM = 50;
 const PUCK_IDS = ['Puck_240208_24', 'Puck_240208_25', 'Puck_240208_26',
                   'Puck_240208_27', 'Puck_240208_29', 'Puck_240208_30'];
+const UNTREATED_PUCK_IDS = ['Puck_220827_08_Original'];
 
 function shortPuck(id) {
   // "Puck_240208_24" -> "Puck 24"
@@ -587,6 +614,168 @@ function NeighborhoodView() {
   );
 }
 
+function UntreatedView() {
+  // Single-puck variant of NeighborhoodView for the untreated control
+  // (Puck_220827_08_Original). Same /api/render schema, same modal/expand
+  // behaviour — the only difference is one tile rendered full-width
+  // instead of the 3x2 melanoma grid.
+  const UNTREATED_PID = UNTREATED_PUCK_IDS[0];
+  const [inputVal, setInputVal] = React.useState('');
+  const [radiusVal, setRadiusVal] = React.useState(String(DEFAULT_RADIUS_UM));
+  const [tile, setTile] = React.useState({ status: 'idle' });
+  const [genes, setGenes] = React.useState([]);
+  const [activeRadius, setActiveRadius] = React.useState(DEFAULT_RADIUS_UM);
+  const [expanded, setExpanded] = React.useState(false);
+  const reqIdRef = React.useRef(0);
+
+  function handleRun() {
+    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+    if (!parsed.length) return;
+    const r = parseFloat(radiusVal);
+    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+    const myReq = ++reqIdRef.current;
+    setGenes(parsed);
+    setActiveRadius(radius);
+    setExpanded(false);
+    setTile({ status: 'loading' });
+    const qs = new URLSearchParams({
+      genes: parsed.join(','),
+      radius: String(radius),
+      puck: UNTREATED_PID,
+    });
+    fetch(`/api/render?${qs.toString()}`)
+      .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+      .then(({ ok, body }) => {
+        if (myReq !== reqIdRef.current) return;
+        setTile(ok
+          ? { status: 'done', url: body.image_url }
+          : { status: 'error', error: body.error || 'render failed' });
+      })
+      .catch(err => {
+        if (myReq !== reqIdRef.current) return;
+        setTile({ status: 'error', error: String(err) });
+      });
+  }
+
+  function handleKey(e) { if (e.key === 'Enter') handleRun(); }
+
+  const hasGenes = genes.length > 0;
+  const isLoading = tile.status === 'loading';
+  const downloadUrl = tile.status === 'done'
+    ? tile.url.replace('/api/image/', '/api/download/')
+    : null;
+
+  return (
+    <>
+      <div className="topbar">
+        <span className="app-title">Untreated</span>
+
+        <div className="input-wrap">
+          <input
+            className="gene-input"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Enter up to 4 genes, comma-separated  (e.g. fli1a, enpp2, cd8a, mitfa)"
+          />
+        </div>
+
+        <div className="radius-wrap" title="Neighborhood circle radius">
+          <input
+            className="radius-input"
+            type="number"
+            min="1"
+            max="500"
+            step="1"
+            value={radiusVal}
+            onChange={e => setRadiusVal(e.target.value)}
+            onKeyDown={handleKey}
+          />
+          <span className="radius-unit">µm</span>
+        </div>
+
+        <button className="run-btn" onClick={handleRun} disabled={isLoading || !inputVal.trim()}>
+          {isLoading ? 'Rendering…' : 'Visualize'}
+        </button>
+
+        {hasGenes && (
+          <div className="gene-chips">
+            {genes.map((g, i) => (
+              <div key={i} className="gene-chip">
+                <span className="chip-dot" style={{ background: GENE_COLORS[i] }}></span>
+                {g}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid-area" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+        <div
+          className={'puck-card' + (tile.status === 'idle' ? ' idle' : '')}
+          onClick={() => tile.status === 'done' && setExpanded(true)}
+          style={tile.status === 'done' ? {} : { cursor: isLoading ? 'wait' : 'default' }}
+        >
+          <div className="puck-image-area">
+            {tile.status === 'idle' && (
+              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>—</span>
+            )}
+            {isLoading && <div className="spinner"></div>}
+            {tile.status === 'done' && <img src={tile.url} alt={UNTREATED_PID} />}
+            {tile.status === 'error' && <div className="puck-error">{tile.error}</div>}
+          </div>
+          <div className="puck-footer">
+            <span className="puck-id">{shortPuck(UNTREATED_PID)} (untreated)</span>
+            {tile.status === 'done' && <span className="puck-hint">click to expand</span>}
+            {isLoading && <span className="puck-hint">rendering…</span>}
+          </div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="modal-backdrop" onClick={() => setExpanded(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{shortPuck(UNTREATED_PID)} (untreated)</span>
+              <div style={{ display: 'flex', gap: 10, marginLeft: 8 }}>
+                {genes.map((g, i) => (
+                  <div key={i} className="gene-chip">
+                    <span className="chip-dot" style={{ background: GENE_COLORS[i] }}></span>
+                    {g}
+                  </div>
+                ))}
+              </div>
+              <button className="modal-close" onClick={() => setExpanded(false)}>✕</button>
+            </div>
+
+            <div className="modal-image">
+              {tile.status === 'done'
+                ? <img src={tile.url} alt={UNTREATED_PID} />
+                : <div className="spinner"></div>}
+            </div>
+
+            <div className="modal-footer">
+              <span style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'DM Mono' }}>
+                {genes.length} gene{genes.length > 1 ? 's' : ''} · {activeRadius} µm neighborhood
+              </span>
+              <a className="dl-btn"
+                 href={downloadUrl || '#'}
+                 aria-disabled={!downloadUrl}
+                 download>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v8M4 7l3 3 3-3M2 12h10" stroke="currentColor"
+                        strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Download PNG
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function CellTypeView() {
   const [inputVal, setInputVal] = React.useState('');
   const [genes, setGenes] = React.useState([]);
@@ -600,9 +789,11 @@ function CellTypeView() {
   const [tiles, setTiles] = React.useState(() =>
     Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'idle' }])));
   const [cumTile, setCumTile] = React.useState({ status: 'idle' });
+  const [untreatedTile, setUntreatedTile] = React.useState({ status: 'idle' });
   const [expanded, setExpanded] = React.useState(null);
   const reqIdRef = React.useRef(0);
   const cumReqRef = React.useRef(0);
+  const untreatedReqRef = React.useRef(0);
 
   React.useEffect(() => {
     fetch('/api/celltypes')
@@ -674,6 +865,31 @@ function CellTypeView() {
       });
   }
 
+  function fetchUntreatedDotplot(parsedGenes) {
+    if (!parsedGenes.length) {
+      setUntreatedTile({ status: 'idle' });
+      return;
+    }
+    const myReq = ++untreatedReqRef.current;
+    setUntreatedTile({ status: 'loading' });
+    const qs = new URLSearchParams({
+      genes: parsedGenes.join(','),
+      puck: UNTREATED_PUCK_IDS[0],
+    });
+    fetch(`/api/render-celltype-dotplot?${qs.toString()}`)
+      .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+      .then(({ ok, body }) => {
+        if (myReq !== untreatedReqRef.current) return;
+        setUntreatedTile(ok
+          ? { status: 'done', url: body.image_url }
+          : { status: 'error', error: body.error || 'render failed' });
+      })
+      .catch(err => {
+        if (myReq !== untreatedReqRef.current) return;
+        setUntreatedTile({ status: 'error', error: String(err) });
+      });
+  }
+
   function handleRun() {
     const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
     if (!parsed.length) return;
@@ -686,8 +902,10 @@ function CellTypeView() {
     if (subMode === 'dotplot') {
       const checked = PUCK_IDS.filter(p => pucksOn[p]);
       fetchCumulative(parsed, checked);
+      fetchUntreatedDotplot(parsed);
     } else {
       setCumTile({ status: 'idle' });
+      setUntreatedTile({ status: 'idle' });
     }
   }
 
@@ -702,8 +920,10 @@ function CellTypeView() {
       if (newMode === 'dotplot') {
         const checked = PUCK_IDS.filter(p => pucksOn[p]);
         fetchCumulative(genes, checked);
+        fetchUntreatedDotplot(genes);
       } else {
         setCumTile({ status: 'idle' });
+        setUntreatedTile({ status: 'idle' });
       }
     }
   }
@@ -720,16 +940,21 @@ function CellTypeView() {
   }
 
   const anyLoading = Object.values(tiles).some(t => t.status === 'loading')
-    || cumTile.status === 'loading';
+    || cumTile.status === 'loading'
+    || untreatedTile.status === 'loading';
   const expandedTile = expanded === 'cumulative'
     ? cumTile
-    : (expanded ? tiles[expanded] : null);
+    : expanded === 'untreated'
+      ? untreatedTile
+      : (expanded ? tiles[expanded] : null);
   const expandedDownloadUrl = expandedTile && expandedTile.status === 'done'
     ? expandedTile.url.replace('/api/image/', '/api/download/')
     : null;
   const expandedTitle = expanded === 'cumulative'
     ? `Cumulative (${PUCK_IDS.filter(p => pucksOn[p]).map(shortPuck).join(', ')})`
-    : (expanded ? shortPuck(expanded) : '');
+    : expanded === 'untreated'
+      ? `Untreated (${shortPuck(UNTREATED_PUCK_IDS[0])})`
+      : (expanded ? shortPuck(expanded) : '');
 
   return (
     <>
@@ -796,21 +1021,41 @@ function CellTypeView() {
       )}
 
       {subMode === 'dotplot' && (
-        <div
-          className={'cumulative-panel'
-            + (cumTile.status === 'done' ? ' clickable' : ' idle')}
-          onClick={() => cumTile.status === 'done' && setExpanded('cumulative')}
-        >
-          {cumTile.status === 'idle' && (
-            <span className="cumulative-empty">
-              Cumulative dotplot will appear here after you click Visualize
-            </span>
-          )}
-          {cumTile.status === 'loading' && <div className="spinner"></div>}
-          {cumTile.status === 'done' && <img src={cumTile.url} alt="cumulative dotplot" />}
-          {cumTile.status === 'error' && (
-            <div className="cumulative-error">{cumTile.error}</div>
-          )}
+        <div className="dotplot-row">
+          <div
+            className={'cumulative-panel'
+              + (cumTile.status === 'done' ? ' clickable' : ' idle')}
+            onClick={() => cumTile.status === 'done' && setExpanded('cumulative')}
+          >
+            <span className="dotplot-panel-label">Cumulative (melanoma)</span>
+            {cumTile.status === 'idle' && (
+              <span className="cumulative-empty">
+                Cumulative dotplot will appear here after you click Visualize
+              </span>
+            )}
+            {cumTile.status === 'loading' && <div className="spinner"></div>}
+            {cumTile.status === 'done' && <img src={cumTile.url} alt="cumulative dotplot" />}
+            {cumTile.status === 'error' && (
+              <div className="cumulative-error">{cumTile.error}</div>
+            )}
+          </div>
+          <div
+            className={'cumulative-panel'
+              + (untreatedTile.status === 'done' ? ' clickable' : ' idle')}
+            onClick={() => untreatedTile.status === 'done' && setExpanded('untreated')}
+          >
+            <span className="dotplot-panel-label">Untreated</span>
+            {untreatedTile.status === 'idle' && (
+              <span className="cumulative-empty">
+                Untreated dotplot will appear here after you click Visualize
+              </span>
+            )}
+            {untreatedTile.status === 'loading' && <div className="spinner"></div>}
+            {untreatedTile.status === 'done' && <img src={untreatedTile.url} alt="untreated dotplot" />}
+            {untreatedTile.status === 'error' && (
+              <div className="cumulative-error">{untreatedTile.error}</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -890,8 +1135,14 @@ function App() {
           className={'tab-btn' + (tab === 'celltype' ? ' active' : '')}
           onClick={() => setTab('celltype')}
         >Cell-type expression</button>
+        <button
+          className={'tab-btn' + (tab === 'untreated' ? ' active' : '')}
+          onClick={() => setTab('untreated')}
+        >Untreated</button>
       </div>
-      {tab === 'neighborhood' ? <NeighborhoodView /> : <CellTypeView />}
+      {tab === 'neighborhood' && <NeighborhoodView />}
+      {tab === 'celltype' && <CellTypeView />}
+      {tab === 'untreated' && <UntreatedView />}
     </>
   );
 }

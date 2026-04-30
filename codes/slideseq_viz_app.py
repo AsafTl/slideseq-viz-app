@@ -55,6 +55,8 @@ celltype_plot = importlib.util.module_from_spec(_ct_spec)
 _ct_spec.loader.exec_module(celltype_plot)
 
 PUCK_IDS = multigene_plot.PUCK_IDS
+UNTREATED_PUCK_IDS = multigene_plot.UNTREATED_PUCK_IDS
+ALL_PUCK_IDS = multigene_plot.ALL_PUCK_IDS
 RADIUS_UM = multigene_plot.RADIUS_UM
 GENE_COLOR_NAMES = multigene_plot.GENE_COLORS
 
@@ -111,6 +113,7 @@ def index():
 def config():
     return jsonify({
         "puck_ids": PUCK_IDS,
+        "untreated_puck_ids": UNTREATED_PUCK_IDS,
         "gene_color_names": GENE_COLOR_NAMES,
         "radius_um": RADIUS_UM,
     })
@@ -123,7 +126,7 @@ def render():
     radius_um = _parse_radius(request.args.get("radius"))
     if not genes:
         return jsonify({"error": "no genes provided"}), 400
-    if puck not in PUCK_IDS:
+    if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
 
     cached = _cache_path(puck, genes, radius_um)
@@ -168,7 +171,7 @@ def _cache_path_glob(pattern: str) -> Path | None:
 @app.route("/api/celltypes")
 def celltypes():
     pid = request.args.get("puck", "").strip() or None
-    if pid is not None and pid not in PUCK_IDS:
+    if pid is not None and pid not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {pid!r}"}), 400
     try:
         cts = celltype_plot.list_celltypes(pid)
@@ -183,7 +186,7 @@ def render_celltype_dotplot():
     puck = request.args.get("puck", "")
     if not genes:
         return jsonify({"error": "no genes provided"}), 400
-    if puck not in PUCK_IDS:
+    if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
 
     gene_slug = "_".join(genes)
@@ -239,7 +242,7 @@ def render_celltype_spatial():
     puck = request.args.get("puck", "")
     gene = request.args.get("gene", "").strip()
     celltype = request.args.get("celltype", "").strip()
-    if puck not in PUCK_IDS:
+    if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
     if not gene:
         return jsonify({"error": "no gene provided"}), 400

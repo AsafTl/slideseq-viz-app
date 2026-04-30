@@ -1,18 +1,22 @@
 # Slideseq Viz App
 
 A small local web app for exploring **Slide-seq** spatial transcriptomics data
-from 6 zebrafish melanoma pucks. The app has two tabs:
+from 6 zebrafish melanoma pucks and 1 untreated control puck. The app has three tabs:
 
 - **Neighborhood** — type up to 4 gene names and the app draws, for each puck,
   a map of where those genes are expressed. Each gene gets its own color, and
   a circle of adjustable radius is drawn around every expressing bead so you
-  can see where genes co-occur in space.
+  can see where genes co-occur in space. Works for both melanoma and untreated
+  pucks.
+- **Untreated** — dedicated tab to visualize the untreated control puck using
+  the same neighborhood visualization as the Neighborhood tab (up to 4 genes,
+  adjustable radius).
 - **Cell-type expression** — uses the RCTD per-bead cell-type calls to show
   either (a) a **dotplot** of how strongly your chosen genes are expressed in
-  each cell type — one per puck, plus a cumulative one across a chosen subset
-  of pucks — or (b) a **spatial highlight map** that colors the puck by cell
-  type and highlights the beads of one chosen cell type that express one
-  chosen gene.
+  each cell type — one per puck, plus a cumulative one across melanoma pucks,
+  and a separate untreated dotplot for comparison — or (b) a **spatial
+  highlight map** that colors the puck by cell type and highlights the beads
+  of one chosen cell type that express one chosen gene.
 
 The app runs **entirely on your own computer**. Nothing is uploaded anywhere.
 The browser part is just the user interface; the actual rendering is done
@@ -153,9 +157,10 @@ hundred MB and may take a few minutes the first time.
 The repository on GitHub contains **only the code**, not the actual
 Slide-seq data.
 
-You need 5 files per puck, for each of the 6 pucks:
-`Puck_240208_24`, `Puck_240208_25`, `Puck_240208_26`, `Puck_240208_27`,
-`Puck_240208_29`, `Puck_240208_30`.
+You need files for 7 pucks:
+- **6 melanoma pucks:** `Puck_240208_24`, `Puck_240208_25`, `Puck_240208_26`,
+  `Puck_240208_27`, `Puck_240208_29`, `Puck_240208_30` (note: 28 is missing).
+- **1 untreated control:** `Puck_220827_08_Original`.
 
 The folder structure must look **exactly** like this — the app builds file
 paths from these names, and a typo will cause it to fail to find the data:
@@ -183,28 +188,40 @@ slideseq-viz-app/
 │   │   └── ... (same 5 files, with "27" instead of "24")
 │   ├── 2024-04-22_Puck_240208_29/
 │   │   └── ... (same 5 files, with "29" instead of "24")
-│   └── 2024-04-22_Puck_240208_30/
-│       └── ... (same 5 files, with "30" instead of "24")
+│   ├── 2024-04-22_Puck_240208_30/
+│   │   └── ... (same 5 files, with "30" instead of "24")
+│   │
+│   └── Untreated/
+│       ├── Puck_220827_08_Original.matched.digital_expression_matrix.mtx
+│       ├── Puck_220827_08_Original.matched.digital_expression_barcodes.tsv
+│       ├── Puck_220827_08_Original.matched.digital_expression_features.tsv
+│       ├── Puck_220827_08_Original_results.csv
+│       └── Puck_220827_08_Original_barcode_xy.txt.gz
 │
 ├── requirements.txt
 └── README.md
 ```
 
 Notes:
-- The `working/` folder and the 6 empty puck sub-folders are **already
+- The `working/` folder and all empty puck sub-folders are **already
   present in the repo** — you only need to drop the data files into the
   matching folders. (You'll see small `.gitkeep` placeholder files inside
   each empty folder; ignore them — they only exist so git keeps the
   folders around.)
-- Each puck folder takes 4 files at the top level (`...mtx`,
-  `...barcodes.tsv`, `...features.tsv`, `..._results.csv`) and 1 file
-  inside the `barcode_matching/` sub-folder (`..._barcode_xy.txt.gz`).
+- **Melanoma pucks** (6 folders named `2024-04-22_Puck_...`): Each takes
+  4 files at the top level (`...mtx`, `...barcodes.tsv`, `...features.tsv`,
+  `..._results.csv`) and 1 file inside the `barcode_matching/` sub-folder
+  (`..._barcode_xy.txt.gz`). Note the `2024-04-22_` prefix on the results CSV.
+- **Untreated puck** (`Untreated/` folder): Takes 5 files **flat at the top level**
+  — no sub-folders. The results CSV is **not** prefixed with a date:
+  `Puck_220827_08_Original_results.csv`. The coordinates file is also at the
+  top level (not in a `barcode_matching/` sub-folder).
 - The `..._results.csv` is the per-bead RCTD output (cell-type assignment
   per bead). It's only used by the **Cell-type expression** tab; the
-  Neighborhood tab works without it. If you don't have it, that tab will
-  load empty — drop the file in and restart the app.
+  Neighborhood and Untreated tabs work without it. If you don't have it,
+  the Cell-type tab will load empty — drop the file in and restart the app.
 - It's fine if the puck folders contain extra files — the app only reads
-  the 5 listed above and ignores everything else.
+  the files listed above and ignores everything else.
 
 
 ---
@@ -231,36 +248,57 @@ To stop the app, go back to the terminal and press `Ctrl + C`.
 
 ### How to use it
 
-The app has two tabs at the top: **Neighborhood** and **Cell-type expression**.
-Both render all 6 pucks at once in a 2×3 grid; click any tile to expand it
-and download the PNG.
+The app has three tabs at the top: **Neighborhood**, **Untreated**, and
+**Cell-type expression**. Click on any tab to switch between them.
 
 #### Neighborhood
+
+Visualize up to 4 genes on all 6 melanoma pucks. The app renders all 6 pucks
+at once in a 2×3 grid; click any tile to expand it and download the PNG.
 
 1. Type 1 to 4 gene symbols in the box, separated by commas
    (e.g. `cd8a, mitfa, fli1a`). The first gene is shown in red, the
    second in green, the third in cyan, the fourth in purple.
 2. Optionally change the proximity radius (default 50 µm).
 3. Click **Visualize**. Each tile shows where those genes are expressed
-   on its puck, with a circle around every expressing bead.
+   on its puck, with a circle around every expressing bead so you can see
+   where genes co-occur in space.
+
+#### Untreated
+
+Visualize up to 4 genes on the untreated control puck. Same interface as
+the **Neighborhood** tab, but shows only the single untreated puck.
+
+1. Type 1 to 4 gene symbols (e.g. `cd8a, mitfa`).
+2. Optionally change the proximity radius (default 50 µm).
+3. Click **Visualize**. A single tile appears showing the untreated puck;
+   click to expand and download the PNG.
 
 #### Cell-type expression
+
+Visualize cell-type-specific gene expression across pucks. This tab has
+two sub-modes toggled at the top: **Dotplot** and **Spatial**.
 
 1. Type 1 to 4 gene symbols.
 2. Pick a cell type from the dropdown (only used by the Spatial sub-mode).
 3. Choose a sub-mode using the toggle: **Dotplot** or **Spatial**.
 4. (Dotplot only) The checkboxes above the cumulative panel control which
-   pucks are pooled into the cumulative dotplot. The 6 per-puck dotplots
-   in the grid below are unaffected.
+   melanoma pucks are pooled into the cumulative dotplot. The untreated
+   dotplot and the 6 per-puck dotplots in the grid below are unaffected.
 5. Click **Visualize**.
-   - In **Dotplot** mode, a full-width "cumulative" dotplot appears above
-     the per-puck grid. Cell types are on the Y axis, your genes on the X.
-     Dot size = % of beads of that cell type with UMI > 0; dot color =
-     mean UMI among the expressing beads (so a true marker shows up as a
-     **large** *and* **bright** dot).
-   - In **Spatial** mode, each tile shows the puck colored by RCTD cell
-     type, with the beads of your chosen cell type that also express the
-     first gene in your list highlighted on top.
+   - In **Dotplot** mode: Two dotplots appear side-by-side above the
+     per-puck grid. The left is a cumulative dotplot of the selected
+     melanoma pucks; the right is the untreated dotplot. Both show cell
+     types on the Y axis and your genes on the X. Dot size = % of beads
+     of that cell type with UMI > 0; dot color = mean UMI among the
+     expressing beads (so a true marker shows up as a **large** *and*
+     **bright** dot). Below these is a 2×3 grid of per-puck dotplots for
+     the 6 melanoma pucks. Click any dotplot to expand and download.
+   - In **Spatial** mode: Each of the 6 melanoma tiles shows the puck
+     colored by RCTD cell type, with the beads of your chosen cell type
+     that also express the first gene in your list highlighted on top.
+     (The untreated puck does not have a spatial sub-mode, so it does not
+     appear in this view.)
 
 ---
 

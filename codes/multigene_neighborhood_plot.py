@@ -51,6 +51,11 @@ PUCK_IDS = [
     "Puck_240208_30",
 ]
 
+# Untreated control puck. Lives under working/Untreated/ with files flat at
+# the top level (no 2024-04-22_ wrapper, no barcode_matching/ subdir).
+UNTREATED_PUCK_IDS = ["Puck_220827_08_Original"]
+ALL_PUCK_IDS = PUCK_IDS + UNTREATED_PUCK_IDS
+
 # Order matters: 1st gene -> red, 2nd -> green, 3rd -> cyan, 4th -> purple.
 GENE_COLORS = ["red", "green", "cyan", "purple"]
 
@@ -63,7 +68,16 @@ TODAY = "2026-04-24"
 
 
 def puck_dir(puck_id: str) -> Path:
+    if puck_id in UNTREATED_PUCK_IDS:
+        return WORKING_DIR / "Untreated"
     return WORKING_DIR / f"{PUCK_FOLDER_PREFIX}{puck_id}"
+
+
+def _coord_path(puck_id: str) -> Path:
+    pdir = puck_dir(puck_id)
+    if puck_id in UNTREATED_PUCK_IDS:
+        return pdir / f"{puck_id}_barcode_xy.txt.gz"
+    return pdir / "barcode_matching" / f"{puck_id}_barcode_xy.txt.gz"
 
 
 # --------- Per-puck in-memory data cache ---------
@@ -85,7 +99,7 @@ class _PuckData:
 _DATA_CACHE: dict[str, _PuckData] = {}
 # One lock per puck so two threads asking for the same puck dedupe the load,
 # but different pucks load in parallel.
-_LOAD_LOCKS: dict[str, threading.Lock] = {p: threading.Lock() for p in PUCK_IDS}
+_LOAD_LOCKS: dict[str, threading.Lock] = {p: threading.Lock() for p in ALL_PUCK_IDS}
 
 
 def _load_puck_data(puck_id: str) -> _PuckData:
@@ -116,7 +130,7 @@ def _load_puck_data(puck_id: str) -> _PuckData:
         )
         gene_symbols = features[1].tolist()
 
-        coord_path = pdir / "barcode_matching" / f"{puck_id}_barcode_xy.txt.gz"
+        coord_path = _coord_path(puck_id)
         with gzip.open(coord_path, "rt") as fh:
             coords = pd.read_csv(fh, sep="\t", header=None,
                                  names=["barcode", "xcoord", "ycoord"])
@@ -148,7 +162,7 @@ def _load_puck_data(puck_id: str) -> _PuckData:
         return data
 
 
-def prewarm_cache(puck_ids: list[str] = PUCK_IDS) -> None:
+def prewarm_cache(puck_ids: list[str] = ALL_PUCK_IDS) -> None:
     """Eagerly load each puck's data so the first render after startup is fast."""
     for pid in puck_ids:
         try:

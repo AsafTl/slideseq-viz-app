@@ -59,6 +59,8 @@ else:
     sys.modules[_NEIGHBOR_MOD_NAME] = multigene_plot
 
 PUCK_IDS = multigene_plot.PUCK_IDS
+UNTREATED_PUCK_IDS = multigene_plot.UNTREATED_PUCK_IDS
+ALL_PUCK_IDS = multigene_plot.ALL_PUCK_IDS
 MICRONS_PER_PIXEL = multigene_plot.MICRONS_PER_PIXEL
 
 # Stable 12-cell-type palette. Order matches the cell-type vocabulary in the
@@ -86,15 +88,15 @@ UNASSIGNED_COLOR = "#7a746c"
 
 # np.ndarray[str], length = n_beads in puck (matrix row order).
 _CALLS_CACHE: dict[str, np.ndarray] = {}
-_CALLS_LOCKS: dict[str, threading.Lock] = {p: threading.Lock() for p in PUCK_IDS}
+_CALLS_LOCKS: dict[str, threading.Lock] = {p: threading.Lock() for p in ALL_PUCK_IDS}
 
 
 def _results_path(puck_id: str) -> Path:
-    return (
-        WORKING_DIR
-        / f"{PUCK_FOLDER_PREFIX}{puck_id}"
-        / f"{RESULTS_FILE_PREFIX}{puck_id}_results.csv"
-    )
+    pdir = multigene_plot.puck_dir(puck_id)
+    if puck_id in UNTREATED_PUCK_IDS:
+        # working/Untreated/Puck_220827_08_Original_results.csv
+        return pdir / f"{puck_id}_results.csv"
+    return pdir / f"{RESULTS_FILE_PREFIX}{puck_id}_results.csv"
 
 
 def _load_celltype_calls(puck_id: str) -> np.ndarray:
@@ -348,7 +350,7 @@ def _slug_pucks(pucks: list[str]) -> str:
 
 
 def make_dotplot(puck_id: str, genes: list[str]) -> Path | None:
-    if puck_id not in PUCK_IDS:
+    if puck_id not in ALL_PUCK_IDS:
         raise ValueError(f"unknown puck {puck_id!r}")
     if not genes:
         return None
@@ -408,7 +410,7 @@ def _ct_slug(ct: str) -> str:
 def make_celltype_spatial_plot(
     puck_id: str, gene: str, celltype: str
 ) -> Path | None:
-    if puck_id not in PUCK_IDS:
+    if puck_id not in ALL_PUCK_IDS:
         raise ValueError(f"unknown puck {puck_id!r}")
     if not gene or not celltype:
         return None
