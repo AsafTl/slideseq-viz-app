@@ -349,7 +349,8 @@ def _slug_pucks(pucks: list[str]) -> str:
     return "-".join(sorted(_short_puck(p) for p in pucks))
 
 
-def make_dotplot(puck_id: str, genes: list[str]) -> Path | None:
+def make_dotplot(puck_id: str, genes: list[str],
+                 show_legend: bool = True) -> Path | None:
     if puck_id not in ALL_PUCK_IDS:
         raise ValueError(f"unknown puck {puck_id!r}")
     if not genes:
@@ -365,15 +366,20 @@ def make_dotplot(puck_id: str, genes: list[str]) -> Path | None:
     if missing:
         title += f"\n(missing genes: {', '.join(missing)})"
     sc, vmax, sr = _draw_dotplot(ax, genes, cts, frac, mean, title=title)
-    _add_dotplot_legends(fig, sc, vmax, sr)
+    if show_legend:
+        _add_dotplot_legends(fig, sc, vmax, sr)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUTPUT_DIR / f"{TODAY}_{puck_id}_{_slug_genes(genes)}_dotplot.png"
+    suffix = "" if show_legend else "_nolegend"
+    out = OUTPUT_DIR / (
+        f"{TODAY}_{puck_id}_{_slug_genes(genes)}_dotplot{suffix}.png"
+    )
     fig.savefig(out, dpi=180, bbox_inches="tight")
     return out
 
 
-def make_cumulative_dotplot(puck_ids: list[str], genes: list[str]) -> Path | None:
+def make_cumulative_dotplot(puck_ids: list[str], genes: list[str],
+                            show_legend: bool = True) -> Path | None:
     pucks = [p for p in puck_ids if p in PUCK_IDS]
     if not pucks or not genes:
         return None
@@ -391,11 +397,14 @@ def make_cumulative_dotplot(puck_ids: list[str], genes: list[str]) -> Path | Non
                  constrained_layout=True)
     ax = fig.add_subplot(1, 1, 1)
     sc, vmax, sr = _draw_dotplot(ax, genes, cts, frac, mean, title=title)
-    _add_dotplot_legends(fig, sc, vmax, sr)
+    if show_legend:
+        _add_dotplot_legends(fig, sc, vmax, sr)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = "" if show_legend else "_nolegend"
     out = OUTPUT_DIR / (
-        f"{TODAY}_cumulative_{_slug_pucks(pucks)}_{_slug_genes(genes)}_dotplot.png"
+        f"{TODAY}_cumulative_{_slug_pucks(pucks)}_{_slug_genes(genes)}"
+        f"_dotplot{suffix}.png"
     )
     fig.savefig(out, dpi=180, bbox_inches="tight")
     return out
@@ -408,7 +417,7 @@ def _ct_slug(ct: str) -> str:
 
 
 def make_celltype_spatial_plot(
-    puck_id: str, gene: str, celltype: str
+    puck_id: str, gene: str, celltype: str, show_legend: bool = True
 ) -> Path | None:
     if puck_id not in ALL_PUCK_IDS:
         raise ValueError(f"unknown puck {puck_id!r}")
@@ -481,30 +490,31 @@ def make_celltype_spatial_plot(
         title += "  [gene not in matrix]"
     ax.set_title(title, fontsize=11)
 
-    legend_handles = [
-        Patch(facecolor=color, edgecolor="none", label=ct)
-        for ct, color in CELL_TYPE_PALETTE.items()
-    ]
-    legend_handles.append(
-        Patch(facecolor=UNASSIGNED_COLOR, edgecolor="none",
-              label=f"{UNASSIGNED_LABEL} (doublet/reject)")
-    )
-    legend_handles.append(
-        Patch(facecolor=chosen_color, edgecolor="black", linewidth=0.6,
-              label=f"highlight: {gene}+ {celltype}")
-    )
-    # Below the axes, in 2 rows so it never collides with the plot or title.
-    ax.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.08),
-        fontsize=8,
-        framealpha=0.9,
-        ncol=5,
-        handlelength=1.2,
-        columnspacing=1.0,
-        borderpad=0.4,
-    )
+    if show_legend:
+        legend_handles = [
+            Patch(facecolor=color, edgecolor="none", label=ct)
+            for ct, color in CELL_TYPE_PALETTE.items()
+        ]
+        legend_handles.append(
+            Patch(facecolor=UNASSIGNED_COLOR, edgecolor="none",
+                  label=f"{UNASSIGNED_LABEL} (doublet/reject)")
+        )
+        legend_handles.append(
+            Patch(facecolor=chosen_color, edgecolor="black", linewidth=0.6,
+                  label=f"highlight: {gene}+ {celltype}")
+        )
+        # Below the axes, in 2 rows so it never collides with the plot or title.
+        ax.legend(
+            handles=legend_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.08),
+            fontsize=8,
+            framealpha=0.9,
+            ncol=5,
+            handlelength=1.2,
+            columnspacing=1.0,
+            borderpad=0.4,
+        )
 
     scalebar = ScaleBar(
         MICRONS_PER_PIXEL, units="um", location="lower right",
@@ -513,8 +523,10 @@ def make_celltype_spatial_plot(
     ax.add_artist(scalebar)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = "" if show_legend else "_nolegend"
     out = OUTPUT_DIR / (
-        f"{TODAY}_{puck_id}_{gene}_{_ct_slug(celltype)}_celltype_spatial.png"
+        f"{TODAY}_{puck_id}_{gene}_{_ct_slug(celltype)}"
+        f"_celltype_spatial{suffix}.png"
     )
     fig.savefig(out, dpi=180)
     return out

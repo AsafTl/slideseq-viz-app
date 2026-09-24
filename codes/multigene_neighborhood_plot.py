@@ -205,7 +205,8 @@ def _add_circles(ax, xs, ys, diameter_data_units, color, alpha):
 
 
 def make_plot(puck_id: str, genes: list[str], radius_um: float = RADIUS_UM,
-              umi_threshold: int = UMI_THRESHOLD) -> Path | None:
+              umi_threshold: int = UMI_THRESHOLD,
+              show_legend: bool = True) -> Path | None:
     data = _load_puck_data(puck_id)
     n_beads = data.matrix_csc.shape[0]
 
@@ -265,7 +266,8 @@ def make_plot(puck_id: str, genes: list[str], radius_um: float = RADIUS_UM,
         f"{puck_id}: expressing beads with {radius_um:.0f} µm proximity circles\n"
         f"{gene_label}; circle overlap = within-{radius_um:.0f}µm co-occurrence"
     )
-    ax.legend(loc="upper right", fontsize=9, framealpha=0.9)
+    if show_legend:
+        ax.legend(loc="upper right", fontsize=9, framealpha=0.9)
 
     scalebar = ScaleBar(MICRONS_PER_PIXEL, units="um", location="lower right",
                         length_fraction=0.15, box_alpha=0.7)
@@ -273,8 +275,11 @@ def make_plot(puck_id: str, genes: list[str], radius_um: float = RADIUS_UM,
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     gene_slug = "_".join(genes)
+    # Legend-less renders get their own filename so both variants can live in
+    # the figs/ cache side by side.
+    suffix = "" if show_legend else "_nolegend"
     out = OUTPUT_DIR / (
-        f"{TODAY}_{puck_id}_{gene_slug}_neighborhood_{int(radius_um)}um.png"
+        f"{TODAY}_{puck_id}_{gene_slug}_neighborhood_{int(radius_um)}um{suffix}.png"
     )
     fig.savefig(out, dpi=200)
     print(f"[{puck_id}] wrote {out}")
@@ -289,6 +294,8 @@ def main() -> None:
     parser.add_argument("--radius-um", type=float, default=RADIUS_UM)
     parser.add_argument("--threshold", type=int, default=UMI_THRESHOLD,
                         help="UMI count strictly greater than this counts as 'expressing'")
+    parser.add_argument("--no-legend", action="store_true",
+                        help="Render without the in-figure legend")
     parser.add_argument("--pucks", nargs="*", default=PUCK_IDS,
                         help="Override which pucks to plot (default: all 6 melanoma pucks)")
     args = parser.parse_args()
@@ -298,7 +305,8 @@ def main() -> None:
 
     for puck_id in args.pucks:
         try:
-            make_plot(puck_id, args.genes, args.radius_um, args.threshold)
+            make_plot(puck_id, args.genes, args.radius_um, args.threshold,
+                      show_legend=not args.no_legend)
         except Exception as exc:
             print(f"[{puck_id}] FAILED: {exc!r}")
 
