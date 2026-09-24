@@ -91,14 +91,30 @@ def _parse_radius(raw: str | None) -> float:
     return max(1.0, min(500.0, v))
 
 
-def _cache_path(puck_id: str, genes: list[str], radius_um: float) -> Path | None:
-    """Most recent cached PNG for this (puck, gene-list, radius), or None.
+def _parse_legend(raw: str | None) -> bool:
+    """`legend=0` (or false/no/off) hides the in-figure legend. Default: show."""
+    if raw is None:
+        return True
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _legend_suffix(show_legend: bool) -> str:
+    """Filename tail that keeps legend/no-legend renders in separate cache slots."""
+    return "" if show_legend else "_nolegend"
+
+
+def _cache_path(puck_id: str, genes: list[str], radius_um: float,
+                show_legend: bool = True) -> Path | None:
+    """Most recent cached PNG for this (puck, gene-list, radius, legend), or None.
 
     Wildcard prefix matches PNGs written by either the original renderer
     (date prefix `2026-04-24_`) or the optimized one — they share the cache.
     """
     gene_slug = "_".join(genes)
-    pattern = f"*_{puck_id}_{gene_slug}_neighborhood_{int(radius_um)}um.png"
+    suffix = _legend_suffix(show_legend)
+    pattern = (
+        f"*_{puck_id}_{gene_slug}_neighborhood_{int(radius_um)}um{suffix}.png"
+    )
     matches = sorted(FIGS_DIR.glob(pattern),
                      key=lambda p: p.stat().st_mtime, reverse=True)
     return matches[0] if matches else None
@@ -124,19 +140,22 @@ def render():
     genes = _parse_genes(request.args.get("genes", ""))
     puck = request.args.get("puck", "")
     radius_um = _parse_radius(request.args.get("radius"))
+    show_legend = _parse_legend(request.args.get("legend"))
     if not genes:
         return jsonify({"error": "no genes provided"}), 400
     if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
 
-    cached = _cache_path(puck, genes, radius_um)
+    cached = _cache_path(puck, genes, radius_um, show_legend)
     if cached is None:
-        key = (puck, tuple(genes), radius_um)
+        key = (puck, tuple(genes), radius_um, show_legend)
         with _get_key_lock(key):
-            cached = _cache_path(puck, genes, radius_um)
+            cached = _cache_path(puck, genes, radius_um, show_legend)
             if cached is None:
                 try:
-                    cached = multigene_plot.make_plot(puck, genes, radius_um)
+                    cached = multigene_plot.make_plot(
+                        puck, genes, radius_um, show_legend=show_legend
+                    )
                 except Exception as exc:
                     return jsonify({"error": repr(exc)}), 500
                 if cached is None:
@@ -184,21 +203,24 @@ def celltypes():
 def render_celltype_dotplot():
     genes = _parse_genes(request.args.get("genes", ""))
     puck = request.args.get("puck", "")
+    show_legend = _parse_legend(request.args.get("legend"))
     if not genes:
         return jsonify({"error": "no genes provided"}), 400
     if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
 
     gene_slug = "_".join(genes)
-    pattern = f"*_{puck}_{gene_slug}_dotplot.png"
+    pattern = f"*_{puck}_{gene_slug}_dotplot{_legend_suffix(show_legend)}.png"
     cached = _cache_path_glob(pattern)
     if cached is None:
-        key = ("dotplot", puck, tuple(genes))
+        key = ("dotplot", puck, tuple(genes), show_legend)
         with _get_key_lock(key):
             cached = _cache_path_glob(pattern)
             if cached is None:
                 try:
-                    cached = celltype_plot.make_dotplot(puck, genes)
+                    cached = celltype_plot.make_dotplot(
+                        puck, genes, show_legend=show_legend
+                    )
                 except Exception as exc:
                     return jsonify({"error": repr(exc)}), 500
                 if cached is None:
@@ -211,6 +233,7 @@ def render_celltype_dotplot_cumulative():
     genes = _parse_genes(request.args.get("genes", ""))
     pucks_raw = request.args.get("pucks", "")
     pucks = [p.strip() for p in pucks_raw.split(",") if p.strip()]
+    show_legend = _parse_legend(request.args.get("legend"))
     if not genes:
         return jsonify({"error": "no genes provided"}), 400
     bad = [p for p in pucks if p not in PUCK_IDS]
@@ -221,15 +244,20 @@ def render_celltype_dotplot_cumulative():
 
     gene_slug = "_".join(genes)
     pucks_slug = _slug_pucks(pucks)
-    pattern = f"*_cumulative_{pucks_slug}_{gene_slug}_dotplot.png"
+    pattern = (
+        f"*_cumulative_{pucks_slug}_{gene_slug}"
+        f"_dotplot{_legend_suffix(show_legend)}.png"
+    )
     cached = _cache_path_glob(pattern)
     if cached is None:
-        key = ("dotplot_cumulative", tuple(sorted(pucks)), tuple(genes))
+        key = ("dotplot_cumulative", tuple(sorted(pucks)), tuple(genes), show_legend)
         with _get_key_lock(key):
             cached = _cache_path_glob(pattern)
             if cached is None:
                 try:
-                    cached = celltype_plot.make_cumulative_dotplot(pucks, genes)
+                    cached = celltype_plot.make_cumulative_dotplot(
+                        pucks, genes, show_legend=show_legend
+                    )
                 except Exception as exc:
                     return jsonify({"error": repr(exc)}), 500
                 if cached is None:
@@ -242,6 +270,7 @@ def render_celltype_spatial():
     puck = request.args.get("puck", "")
     gene = request.args.get("gene", "").strip()
     celltype = request.args.get("celltype", "").strip()
+    show_legend = _parse_legend(request.args.get("legend"))
     if puck not in ALL_PUCK_IDS:
         return jsonify({"error": f"unknown puck {puck!r}"}), 400
     if not gene:
@@ -251,16 +280,19 @@ def render_celltype_spatial():
     if celltype not in celltype_plot.CELL_TYPE_PALETTE:
         return jsonify({"error": f"unknown celltype {celltype!r}"}), 400
 
-    pattern = f"*_{puck}_{gene}_{_ct_slug(celltype)}_celltype_spatial.png"
+    pattern = (
+        f"*_{puck}_{gene}_{_ct_slug(celltype)}"
+        f"_celltype_spatial{_legend_suffix(show_legend)}.png"
+    )
     cached = _cache_path_glob(pattern)
     if cached is None:
-        key = ("celltype_spatial", puck, gene, celltype)
+        key = ("celltype_spatial", puck, gene, celltype, show_legend)
         with _get_key_lock(key):
             cached = _cache_path_glob(pattern)
             if cached is None:
                 try:
                     cached = celltype_plot.make_celltype_spatial_plot(
-                        puck, gene, celltype
+                        puck, gene, celltype, show_legend=show_legend
                     )
                 except Exception as exc:
                     return jsonify({"error": repr(exc)}), 500

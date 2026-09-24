@@ -42,7 +42,8 @@ body {
   padding: 14px 28px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;      /* narrow windows: controls wrap instead of overflowing */
+  gap: 12px 20px;
   flex-shrink: 0;
 }
 .app-title {
@@ -53,7 +54,7 @@ body {
   white-space: nowrap;
   text-transform: uppercase;
 }
-.input-wrap { flex: 1; position: relative; }
+.input-wrap { flex: 1 1 260px; min-width: 200px; position: relative; }
 .gene-input {
   width: 100%;
   background: var(--bg);
@@ -330,6 +331,39 @@ body {
 }
 .subtoggle-btn.active { background: var(--surface); color: var(--text); }
 
+/* LEGEND TOGGLE */
+.legend-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.legend-btn:hover:not(:disabled) { border-color: #b8b3aa; background: var(--bg2); }
+.legend-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.legend-btn.off { color: var(--text2); }
+.legend-swatch {
+  width: 22px; height: 12px;
+  border-radius: 3px;
+  border: 1.5px solid var(--accent);
+  background:
+    linear-gradient(to bottom, var(--accent) 0 2px, transparent 2px 5px,
+                    var(--accent) 5px 7px, transparent 7px 10px,
+                    var(--accent) 10px 12px);
+  opacity: 0.85;
+}
+.legend-btn.off .legend-swatch { border-color: var(--text2); background: none; opacity: 0.5; }
+
 /* CELL-TYPE SELECT */
 .celltype-select {
   background: var(--bg);
@@ -441,6 +475,23 @@ const PUCK_IDS = ['Puck_240208_24', 'Puck_240208_25', 'Puck_240208_26',
                   'Puck_240208_27', 'Puck_240208_29', 'Puck_240208_30'];
 const UNTREATED_PUCK_IDS = ['Puck_220827_08_Original'];
 
+// Toggles the matplotlib legend drawn inside the rendered figures. Flipping
+// it re-requests the PNGs with `legend=0`, which the backend caches separately.
+function LegendToggle({ on, onToggle, disabled }) {
+  return (
+    <button
+      className={'legend-btn' + (on ? '' : ' off')}
+      onClick={onToggle}
+      disabled={disabled}
+      title={on ? 'Hide the legend inside the figures'
+                : 'Show the legend inside the figures'}
+    >
+      <span className="legend-swatch"></span>
+      {on ? 'Legend on' : 'Legend off'}
+    </button>
+  );
+}
+
 function shortPuck(id) {
   // "Puck_240208_24" -> "Puck 24"
   const parts = id.split('_');
@@ -456,20 +507,18 @@ function NeighborhoodView() {
   const [genes, setGenes] = React.useState([]);
   const [activeRadius, setActiveRadius] = React.useState(DEFAULT_RADIUS_UM);
   const [expanded, setExpanded] = React.useState(null);
+  const [showLegend, setShowLegend] = React.useState(true);
   // bumps every time genes change so stale fetches can be ignored
   const reqIdRef = React.useRef(0);
 
-  function handleRun() {
-    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
-    if (!parsed.length) return;
-    const r = parseFloat(radiusVal);
-    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+  function runFetch(parsed, radius, legendOn) {
     const myReq = ++reqIdRef.current;
-    setGenes(parsed);
-    setActiveRadius(radius);
-    setExpanded(null);
     setTiles(Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'loading' }])));
-    const qs = new URLSearchParams({ genes: parsed.join(','), radius: String(radius) });
+    const qs = new URLSearchParams({
+      genes: parsed.join(','),
+      radius: String(radius),
+      legend: legendOn ? '1' : '0',
+    });
     PUCK_IDS.forEach(pid => {
       const url = `/api/render?${qs.toString()}&puck=${encodeURIComponent(pid)}`;
       fetch(url)
@@ -487,6 +536,23 @@ function NeighborhoodView() {
           setTiles(t => ({ ...t, [pid]: { status: 'error', error: String(err) } }));
         });
     });
+  }
+
+  function handleRun() {
+    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+    if (!parsed.length) return;
+    const r = parseFloat(radiusVal);
+    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+    setGenes(parsed);
+    setActiveRadius(radius);
+    setExpanded(null);
+    runFetch(parsed, radius, showLegend);
+  }
+
+  function toggleLegend() {
+    const next = !showLegend;
+    setShowLegend(next);
+    if (genes.length) runFetch(genes, activeRadius, next);
   }
 
   function handleKey(e) { if (e.key === 'Enter') handleRun(); }
@@ -530,6 +596,8 @@ function NeighborhoodView() {
         <button className="run-btn" onClick={handleRun} disabled={anyLoading || !inputVal.trim()}>
           {anyLoading ? 'Rendering…' : 'Visualize'}
         </button>
+
+        <LegendToggle on={showLegend} onToggle={toggleLegend} disabled={anyLoading} />
 
         {hasGenes && (
           <div className="gene-chips">
@@ -626,22 +694,17 @@ function UntreatedView() {
   const [genes, setGenes] = React.useState([]);
   const [activeRadius, setActiveRadius] = React.useState(DEFAULT_RADIUS_UM);
   const [expanded, setExpanded] = React.useState(false);
+  const [showLegend, setShowLegend] = React.useState(true);
   const reqIdRef = React.useRef(0);
 
-  function handleRun() {
-    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
-    if (!parsed.length) return;
-    const r = parseFloat(radiusVal);
-    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+  function runFetch(parsed, radius, legendOn) {
     const myReq = ++reqIdRef.current;
-    setGenes(parsed);
-    setActiveRadius(radius);
-    setExpanded(false);
     setTile({ status: 'loading' });
     const qs = new URLSearchParams({
       genes: parsed.join(','),
       radius: String(radius),
       puck: UNTREATED_PID,
+      legend: legendOn ? '1' : '0',
     });
     fetch(`/api/render?${qs.toString()}`)
       .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
@@ -655,6 +718,23 @@ function UntreatedView() {
         if (myReq !== reqIdRef.current) return;
         setTile({ status: 'error', error: String(err) });
       });
+  }
+
+  function handleRun() {
+    const parsed = inputVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+    if (!parsed.length) return;
+    const r = parseFloat(radiusVal);
+    const radius = (Number.isFinite(r) && r > 0) ? r : DEFAULT_RADIUS_UM;
+    setGenes(parsed);
+    setActiveRadius(radius);
+    setExpanded(false);
+    runFetch(parsed, radius, showLegend);
+  }
+
+  function toggleLegend() {
+    const next = !showLegend;
+    setShowLegend(next);
+    if (genes.length) runFetch(genes, activeRadius, next);
   }
 
   function handleKey(e) { if (e.key === 'Enter') handleRun(); }
@@ -697,6 +777,8 @@ function UntreatedView() {
         <button className="run-btn" onClick={handleRun} disabled={isLoading || !inputVal.trim()}>
           {isLoading ? 'Rendering…' : 'Visualize'}
         </button>
+
+        <LegendToggle on={showLegend} onToggle={toggleLegend} disabled={isLoading} />
 
         {hasGenes && (
           <div className="gene-chips">
@@ -791,6 +873,7 @@ function CellTypeView() {
   const [cumTile, setCumTile] = React.useState({ status: 'idle' });
   const [untreatedTile, setUntreatedTile] = React.useState({ status: 'idle' });
   const [expanded, setExpanded] = React.useState(null);
+  const [showLegend, setShowLegend] = React.useState(true);
   const reqIdRef = React.useRef(0);
   const cumReqRef = React.useRef(0);
   const untreatedReqRef = React.useRef(0);
@@ -807,19 +890,23 @@ function CellTypeView() {
       .catch(() => {});
   }, []);
 
-  function fetchTiles(parsedGenes, parsedCT, mode) {
+  function fetchTiles(parsedGenes, parsedCT, mode, legendOn) {
+    const legend = legendOn ? '1' : '0';
     const myReq = ++reqIdRef.current;
     setTiles(Object.fromEntries(PUCK_IDS.map(p => [p, { status: 'loading' }])));
     PUCK_IDS.forEach(pid => {
       let url;
       if (mode === 'dotplot') {
-        const qs = new URLSearchParams({ puck: pid, genes: parsedGenes.join(',') });
+        const qs = new URLSearchParams({
+          puck: pid, genes: parsedGenes.join(','), legend,
+        });
         url = `/api/render-celltype-dotplot?${qs.toString()}`;
       } else {
         const qs = new URLSearchParams({
           puck: pid,
           gene: parsedGenes[0] || '',
           celltype: parsedCT,
+          legend,
         });
         url = `/api/render-celltype-spatial?${qs.toString()}`;
       }
@@ -840,7 +927,7 @@ function CellTypeView() {
     });
   }
 
-  function fetchCumulative(parsedGenes, checkedPucks) {
+  function fetchCumulative(parsedGenes, checkedPucks, legendOn) {
     if (!parsedGenes.length || !checkedPucks.length) {
       setCumTile({ status: 'idle' });
       return;
@@ -850,6 +937,7 @@ function CellTypeView() {
     const qs = new URLSearchParams({
       genes: parsedGenes.join(','),
       pucks: checkedPucks.join(','),
+      legend: legendOn ? '1' : '0',
     });
     fetch(`/api/render-celltype-dotplot-cumulative?${qs.toString()}`)
       .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
@@ -865,7 +953,7 @@ function CellTypeView() {
       });
   }
 
-  function fetchUntreatedDotplot(parsedGenes) {
+  function fetchUntreatedDotplot(parsedGenes, legendOn) {
     if (!parsedGenes.length) {
       setUntreatedTile({ status: 'idle' });
       return;
@@ -875,6 +963,7 @@ function CellTypeView() {
     const qs = new URLSearchParams({
       genes: parsedGenes.join(','),
       puck: UNTREATED_PUCK_IDS[0],
+      legend: legendOn ? '1' : '0',
     });
     fetch(`/api/render-celltype-dotplot?${qs.toString()}`)
       .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
@@ -898,11 +987,11 @@ function CellTypeView() {
     setActiveGene(parsed[0] || '');
     setActiveCT(chosenCT);
     setExpanded(null);
-    fetchTiles(parsed, chosenCT, subMode);
+    fetchTiles(parsed, chosenCT, subMode, showLegend);
     if (subMode === 'dotplot') {
       const checked = PUCK_IDS.filter(p => pucksOn[p]);
-      fetchCumulative(parsed, checked);
-      fetchUntreatedDotplot(parsed);
+      fetchCumulative(parsed, checked, showLegend);
+      fetchUntreatedDotplot(parsed, showLegend);
     } else {
       setCumTile({ status: 'idle' });
       setUntreatedTile({ status: 'idle' });
@@ -916,11 +1005,11 @@ function CellTypeView() {
     setSubMode(newMode);
     setExpanded(null);
     if (genes.length) {
-      fetchTiles(genes, chosenCT, newMode);
+      fetchTiles(genes, chosenCT, newMode, showLegend);
       if (newMode === 'dotplot') {
         const checked = PUCK_IDS.filter(p => pucksOn[p]);
-        fetchCumulative(genes, checked);
-        fetchUntreatedDotplot(genes);
+        fetchCumulative(genes, checked, showLegend);
+        fetchUntreatedDotplot(genes, showLegend);
       } else {
         setCumTile({ status: 'idle' });
         setUntreatedTile({ status: 'idle' });
@@ -933,10 +1022,22 @@ function CellTypeView() {
       const next = { ...prev, [pid]: !prev[pid] };
       if (genes.length && subMode === 'dotplot') {
         const checked = PUCK_IDS.filter(p => next[p]);
-        fetchCumulative(genes, checked);
+        fetchCumulative(genes, checked, showLegend);
       }
       return next;
     });
+  }
+
+  function toggleLegend() {
+    const next = !showLegend;
+    setShowLegend(next);
+    if (!genes.length) return;
+    fetchTiles(genes, activeCT, subMode, next);
+    if (subMode === 'dotplot') {
+      const checked = PUCK_IDS.filter(p => pucksOn[p]);
+      fetchCumulative(genes, checked, next);
+      fetchUntreatedDotplot(genes, next);
+    }
   }
 
   const anyLoading = Object.values(tiles).some(t => t.status === 'loading')
@@ -1002,6 +1103,8 @@ function CellTypeView() {
         >
           {anyLoading ? 'Rendering…' : 'Visualize'}
         </button>
+
+        <LegendToggle on={showLegend} onToggle={toggleLegend} disabled={anyLoading} />
       </div>
 
       {subMode === 'dotplot' && (
